@@ -229,7 +229,7 @@ fn main() {
     );
 
     if let Some(min) = min_saved_rows {
-        let saving = (original_summed_size - compressed_summed_size) as i32;
+        let saving = original_summed_size.saturating_sub(compressed_summed_size);
         if saving < min {
             println!(
                 "Only {} rows would be saved by this compression. Skipping output.",
