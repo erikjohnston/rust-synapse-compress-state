@@ -138,6 +138,10 @@ fn main() {
                 .help("Whether to wrap each state group change in a transaction")
                 .requires("output_file"),
         ).arg(
+            Arg::with_name("no_verify")
+                .short("n")
+                .help("Do not double-check that the compression was performed correctly"),
+        ).arg(
             Arg::with_name("level_sizes")
                 .short("l")
                 .value_name("LEVELS")
@@ -177,6 +181,8 @@ fn main() {
         .map(|v| v.parse().expect("COUNT must be an integer"));
 
     let transactions = matches.is_present("transactions");
+
+    let no_verify = matches.is_present("no_verify");
 
     let level_sizes = value_t_or_exit!(matches, "level_sizes", LevelSizes);
 
@@ -314,37 +320,39 @@ fn main() {
         pb.finish();
     }
 
-    println!("Checking that state maps match...");
+    if !no_verify {
+        println!("Checking that state maps match...");
 
-    let pb = ProgressBar::new(state_group_map.len() as u64);
-    pb.set_style(
-        ProgressStyle::default_bar().template("[{elapsed_precise}] {bar} {pos}/{len} {msg}"),
-    );
-    pb.set_message("state groups");
-    pb.enable_steady_tick(100);
+        let pb = ProgressBar::new(state_group_map.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar} {pos}/{len} {msg}"),
+        );
+        pb.set_message("state groups");
+        pb.enable_steady_tick(100);
 
-    // Now let's iterate through and assert that the state for each group
-    // matches between the two versions.
-    state_group_map
-        .par_iter() // This uses rayon to run the checks in parallel
-        .try_for_each(|(sg, _)| {
-            let expected = collapse_state_maps(&state_group_map, *sg);
-            let actual = collapse_state_maps(&new_state_group_map, *sg);
+        // Now let's iterate through and assert that the state for each group
+        // matches between the two versions.
+        state_group_map
+            .par_iter() // This uses rayon to run the checks in parallel
+            .try_for_each(|(sg, _)| {
+                let expected = collapse_state_maps(&state_group_map, *sg);
+                let actual = collapse_state_maps(&new_state_group_map, *sg);
 
-            pb.inc(1);
+                pb.inc(1);
 
-            if expected != actual {
-                println!("State Group: {}", sg);
-                println!("Expected: {:#?}", expected);
-                println!("actual: {:#?}", actual);
-                Err(format!("State for group {} do not match", sg))
-            } else {
-                Ok(())
-            }
-        })
-        .expect("expected state to match");
+                if expected != actual {
+                    println!("State Group: {}", sg);
+                    println!("Expected: {:#?}", expected);
+                    println!("actual: {:#?}", actual);
+                    Err(format!("State for group {} do not match", sg))
+                } else {
+                    Ok(())
+                }
+            })
+            .expect("expected state to match");
 
-    pb.finish();
+        pb.finish();
 
-    println!("New state map matches old one");
+        println!("New state map matches old one");
+    }
 }
